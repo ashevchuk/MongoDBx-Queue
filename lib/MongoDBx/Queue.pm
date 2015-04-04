@@ -19,6 +19,7 @@ use namespace::autoclean;
 my $ID       = '_id';
 my $RESERVED = '_r';
 my $PRIORITY = '_p';
+my $MAX_RESERVATIONS = 1024;
 
 with 'MooseX::Role::Logger', 'MooseX::Role::MongoDB' => { -version => 0.006 };
 
@@ -163,15 +164,20 @@ sub reserve_task {
     my ( $self, $opts ) = @_;
 
     my $now    = time();
+
+    my $query = $opts->{query};
+
+    $query->{$PRIORITY} = { '$lte' => $opts->{max_priority} // $now };
+    $query->{$RESERVED} = { '$exists' => boolean::false };
+
+    $self->remove_stale_tasks;
+
     my $result = $self->_mongo_database->run_command(
         [
             findAndModify => $self->collection_name,
-            query         => {
-                $PRIORITY => { '$lte' => $opts->{max_priority} // $now },
-                $RESERVED => { '$exists' => boolean::false },
-            },
+            query         => $query,
             sort => { $PRIORITY => 1 },
-            update => { '$set' => { $RESERVED => $now } },
+            update => { '$set' => { $RESERVED => $now }, '$inc' => { _reservations => 1 } },
         ]
     );
 
@@ -200,6 +206,13 @@ sub reserve_task {
 # to C<reserve_task>.  See that method for more details.
 #
 # =cut
+
+sub remove_stale_tasks {
+    my ( $self, $opts ) = @_;
+    $self->_mongo_collection( $self->collection_name )->remove(
+        { _reservations => { '$gte' => $MAX_RESERVATIONS } }
+    );
+}
 
 sub reschedule_task {
     my ( $self, $task, $opts ) = @_;
