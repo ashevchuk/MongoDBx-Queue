@@ -1,5 +1,6 @@
 NAME
-    MongoDBx::Queue - A message queue implemented with MongoDB
+    MongoDBx::Queue - A message queue implemented with MongoDB.
+    Added deadline scheduler and task reservation query support.
 
 VERSION
     version 1.002
@@ -17,12 +18,17 @@ SYNOPSIS
             }
         );
 
-        $queue->add_task( { msg => "Hello World" } );
+        $queue->add_task( { msg => "Hello World", host => "node0.enslaver.net" } );
         $queue->add_task( { msg => "Goodbye World" } );
+
+        while ( my $task = $queue->reserve_task( { host => "node0.enslaver.net" } ) ) {
+            say $task->{msg};
+            $queue->remove_task( $task );
+        }
 
         while ( my $task = $queue->reserve_task ) {
             say $task->{msg};
-            $queue->remove_task( $task );
+            $queue->reschedule_task( $task ) if $task->{msg} eq "Goodbye World";
         }
 
 DESCRIPTION
